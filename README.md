@@ -1,4 +1,4 @@
 # daily-classics
-日听 · 每日一首古典音乐，附中文导听与个人收藏夹。
-
+日听 · 每日推荐一首古典音乐，附中文导听与个人收藏夹。
+链接如下：
 https://wddygjsmmz.github.io/daily-classics/#references
