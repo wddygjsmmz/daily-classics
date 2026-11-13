@@ -42,7 +42,7 @@ function render(){
  $('reading').replaceChildren(...fields.map(([label,key])=>{const section=make('section','','reading');section.append(make('h3',label),make('p',t[key],'copy'));return section}));
  $('sources').replaceChildren(...t.sources.map(src=>{const a=make('a',src.label+' ↗');a.href=src.url;a.target='_blank';a.rel='noopener';return a}));
  window.configureNativeMusic($('netease'),t);
- $('audio').pause();$('audio').src=t.audio;fill('play','▶　播放作品');fill('state','');saved();paint(ix)
+ setRecording(t);fill('play','▶　播放作品');fill('state','');saved();paint(ix)
 }
 function saved(){if(ix<0)return;fill('save',folders.some(f=>f.items.includes(tracks[ix].original))?'✓　已收藏':'＋　收藏作品')}
 function page(lib){$('library').hidden=!lib;$('daily').hidden=lib;$('home').setAttribute('aria-current',String(!lib));$('lib').setAttribute('aria-current',String(lib));if(lib){$('audio').pause();collection()}}
@@ -50,8 +50,32 @@ $('home').onclick=showToday;$('lib').onclick=()=>{++requestId;fill('loadstatus',
 $('prev').onclick=()=>selectLesson(ix-1);$('next').onclick=()=>selectLesson(ix+1);
 async function checkDate(){if(shanghaiDate()!==today&&!preview&&!$('daily').hidden&&ix===latest)await showToday()}
 setInterval(checkDate,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkDate()});
-const audio=$('audio');$('play').onclick=async()=>{$('playerbox').hidden=false;if(!audio.paused){audio.pause();return}try{await audio.play()}catch(e){if(e.name!=='AbortError')fill('state','当前录音未能播放。可以重试，或去网易云选听同一作品。')}};
-audio.onplay=()=>{fill('play','Ⅱ　暂停播放');fill('state','')};audio.onpause=audio.onended=()=>fill('play','▶　播放作品');audio.onerror=()=>{if(!$('playerbox').hidden)fill('state','当前录音加载失败，可去网易云选听。')};
+const audio=$('audio');
+let originalRecording='',usingBackup=false,wantsPlayback=false,playAttempt=0;
+function setRecording(track){
+ ++playAttempt;wantsPlayback=false;usingBackup=false;audio.pause();
+ originalRecording=track.audio;
+ audio.src='./audio/'+encodeURIComponent(track.date)+'.mp3';
+}
+function tryOriginal(){
+ if(usingBackup||!originalRecording)return false;
+ usingBackup=true;
+ audio.src=originalRecording;
+ if(wantsPlayback)startPlayback();
+ return true;
+}
+async function startPlayback(){
+ const attempt=++playAttempt;wantsPlayback=true;
+ try{await audio.play()}catch(error){
+  if(attempt!==playAttempt||error.name==='AbortError')return;
+  if(error.name==='NotAllowedError'){fill('state','请再次点播放，或使用下方播放器的播放键。');return}
+  if(!tryOriginal())fill('state','录音未能载入。请检查网络后再点播放，或使用网易云音乐客户端。');
+ }
+}
+$('play').onclick=()=>{if(audio.paused){if(audio.error)setRecording(loadedTrack);startPlayback()}else{wantsPlayback=false;audio.pause()}};
+audio.onplay=()=>{wantsPlayback=true;fill('play','Ⅱ　暂停播放');fill('state','')};
+audio.onpause=audio.onended=()=>fill('play','▶　播放作品');
+audio.onerror=()=>{if(!tryOriginal())fill('state','当前网络或浏览器未能播放录音，可重试或使用网易云音乐客户端。')};
 $('save').onclick=()=>{folders=recover();fill('savename',tracks[ix].composer+' · '+tracks[ix].title);$('choices').replaceChildren(...folders.map(f=>{const l=make('label',''),c=make('input','');c.type='checkbox';c.checked=f.items.includes(tracks[ix].original);l.append(c,document.createTextNode(' '+f.name));return l}));$('newfolder').value='';fill('error','');$('modal').showModal()};
 $('cancel').onclick=()=>$('modal').close();
 $('confirm').onclick=()=>{const data=recover(),name=$('newfolder').value.trim(),id=tracks[ix].original;if(name&&data.some(f=>f.name===name)){fill('error','已有同名收藏夹，请勾选上方的收藏夹。');return}
