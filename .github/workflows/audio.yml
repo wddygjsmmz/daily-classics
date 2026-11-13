@@ -1,0 +1,43 @@
+name: Prepare browser audio
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lessons/*.json'
+      - '.github/workflows/audio.yml'
+permissions:
+  contents: write
+concurrency:
+  group: build-course-audio
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install audio converter
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Make MP3 copies of licensed lesson recordings
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audio
+          for lesson in lessons/*.json; do
+            name=$(basename "$lesson" .json)
+            target="audio/$name.mp3"
+            if [[ -s "$target" ]]; then continue; fi
+            source=$(jq -er '.audio | select(startswith("https://upload.wikimedia.org/"))' "$lesson")
+            curl --fail --location --retry 4 --max-time 180 --user-agent 'DailyClassics/1.0 (https://github.com/wddygjsmmz/daily-classics)' "$source" -o "$RUNNER_TEMP/recording"
+            ffmpeg -nostdin -loglevel error -y -i "$RUNNER_TEMP/recording" -vn -codec:a libmp3lame -q:a 5 -metadata artist="$(jq -r '.credit' "$lesson")" -metadata comment="$(jq -r '.license + " · " + .source' "$lesson")" "$target"
+            ffprobe -v error -show_entries format=duration -of csv=p=0 "$target"
+          done
+          git add audio
+          if ! git diff --cached --quiet; then
+            git config user.name github-actions[bot]
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'Add compatible MP3 copies of lesson recordings'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
