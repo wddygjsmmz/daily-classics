@@ -18,9 +18,9 @@ async function selectLesson(n,fromFolder=false,fromQueue=false){
  }catch{if(req===requestId)fill('loadstatus','课程加载失败，请刷新页面重试。')}
 }
 async function showToday(){try{await refreshCatalog();await selectLesson(latest)}catch{fill('loadstatus','课程目录加载失败，请刷新页面重试。')}}
-function recover(){try{const data=JSON.parse(localStorage.getItem(key));if(Array.isArray(data)&&data.length&&data.every(f=>typeof f.name==='string'&&Array.isArray(f.items)))return data}catch{}return [{name:'我的最爱',items:[]}]}
+function recover(){return window.ClassicsAccount.peek()}
 folders=recover();
-function persist(data){localStorage.setItem(key,JSON.stringify(data));folders=data}
+async function persist(data){await window.ClassicsAccount.save(data);folders=recover()}
 const make=(tag,txt,cls)=>{const e=document.createElement(tag);e.textContent=txt;if(cls)e.className=cls;return e};
 const fill=(id,txt)=>$(id).textContent=txt;
 function paint(n){
@@ -155,12 +155,16 @@ $('queue-toggle').onclick=()=>{
 };
 $('save').onclick=()=>{folders=recover();fill('savename',tracks[ix].composer+' · '+tracks[ix].title);$('choices').replaceChildren(...folders.map(f=>{const l=make('label',''),c=make('input','');c.type='checkbox';c.checked=f.items.includes(tracks[ix].original);l.append(c,document.createTextNode(' '+f.name));return l}));$('newfolder').value='';fill('error','');$('modal').showModal()};
 $('cancel').onclick=()=>$('modal').close();
-$('confirm').onclick=()=>{const data=recover(),name=$('newfolder').value.trim(),id=tracks[ix].original;if(name&&data.some(f=>f.name===name)){fill('error','已有同名收藏夹，请勾选上方的收藏夹。');return}
- const inputs=[...$('choices').querySelectorAll('input')];for(const [i,f] of folders.entries()){const g=data.find(g=>g.name===f.name);if(g){g.items=g.items.filter(x=>x!==id);if(inputs[i].checked)g.items.push(id)}}if(name)data.push({name,items:[id]});try{persist(data);saved();$('modal').close()}catch{fill('error','浏览器无法保存，请检查存储设置。')}};
+$('confirm').onclick=async()=>{const data=recover(),name=$('newfolder').value.trim(),id=tracks[ix].original;if(name&&data.some(f=>f.name===name)){fill('error','已有同名收藏夹，请勾选上方的收藏夹。');return}
+ const inputs=[...$('choices').querySelectorAll('input')];for(const [i,f] of folders.entries()){const g=data.find(g=>g.name===f.name);if(g){g.items=g.items.filter(x=>x!==id);if(inputs[i].checked)g.items.push(id)}}if(name)data.push({name,items:[id]});try{await persist(data);saved();$('modal').close()}catch(e){fill('error',e.message||'保存失败，请重试。')}};
 function collection(){folders=recover();selected=Math.min(selected,folders.length-1);fill('notice','');$('folders').replaceChildren(...folders.map((f,i)=>{const b=make('button',f.name+' · '+f.items.length,'btn');b.setAttribute('aria-pressed',String(i===selected));b.onclick=()=>{selected=i;collection()};return b}));const f=folders[selected];$('play-folder').disabled=!f.items.some(id=>tracks.some(t=>t.original===id));$('list').replaceChildren();if(!f.items.length)$('list').append(make('p','这个收藏夹还是空的。在作品页点击「收藏作品」，就能把喜欢的音乐放进来。','muted'));
- for(const id of f.items){const n=tracks.findIndex(t=>t.original===id);if(n<0)continue;const t=tracks[n],row=make('div','','row'),b=make('button',t.title+'　›','link'),del=make('button','移出','btn');b.append(make('small','　'+t.composer));b.onclick=()=>{selectLesson(n,true);window.scrollTo(0,0)};del.onclick=()=>{try{const data=recover(),target=data.find(x=>x.name===f.name);if(target)target.items=target.items.filter(x=>x!==id);persist(data);collection()}catch{fill('notice','移出失败，请检查浏览器存储设置。')}};row.append(b,del);$('list').append(row)}
+ for(const id of f.items){const n=tracks.findIndex(t=>t.original===id);if(n<0)continue;const t=tracks[n],row=make('div','','row'),b=make('button',t.title+'　›','link'),del=make('button','移出','btn');b.append(make('small','　'+t.composer));b.onclick=()=>{selectLesson(n,true);window.scrollTo(0,0)};del.onclick=async()=>{try{const data=recover(),target=data.find(x=>x.name===f.name);if(target)target.items=target.items.filter(x=>x!==id);await persist(data);collection()}catch(e){fill('notice',e.message||'移出失败，请重试。')}};row.append(b,del);$('list').append(row)}
 }
-$('create').onsubmit=e=>{e.preventDefault();const name=$('foldername').value.trim(),data=recover();if(!name||data.some(f=>f.name===name)){fill('notice','请输入一个尚未使用的收藏夹名称。');return}try{persist([...data,{name,items:[]}]);selected=folders.length-1;$('foldername').value='';collection()}catch{fill('notice','浏览器无法保存，请检查存储设置。')}};
+$('create').onsubmit=async e=>{e.preventDefault();const name=$('foldername').value.trim(),data=recover();if(!name||data.some(f=>f.name===name)){fill('notice','请输入一个尚未使用的收藏夹名称。');return}try{await persist([...data,{name,items:[]}]);selected=folders.length-1;$('foldername').value='';collection()}catch(e){fill('notice',e.message||'保存失败，请重试。')}};
 window.addEventListener('storage',e=>{if(e.key===key&&!$('modal').open){folders=recover();saved();if(!$('library').hidden)collection()}});showToday();
 
 
+
+
+window.addEventListener('collections-changed',()=>{folders=recover();saved();if(!$('library').hidden)collection()});
+window.addEventListener('account-changed',()=>{if($('modal').open)$('modal').close();clearQueue();audio.pause();selected=0;folders=recover();saved();if(!$('library').hidden)collection()});
