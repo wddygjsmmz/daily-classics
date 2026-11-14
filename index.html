@@ -8,13 +8,13 @@
 <section id="library" hidden class="box"><h1>我的收藏夹</h1><p class="muted" id="collection-mode">未登录 · 收藏夹仅保存在当前浏览器。</p><form id="create" class="new"><input id="foldername" maxlength="48" placeholder="输入新收藏夹名称" aria-label="新收藏夹名称" required><button class="btn primary">新建收藏夹</button></form><div id="folders" class="folders"></div><button id="play-folder" class="btn primary">播放这个收藏夹</button><div id="list"></div><p id="notice" role="status" class="notice"></p></section><div id="playerbox"><a id="current-cue" class="current-cue" hidden></a><p id="queue-status" class="muted" role="status"></p><div class="player"><button id="queue-prev" class="btn" hidden>上一首</button><button id="queue-toggle" class="btn" hidden>暂停</button><button id="queue-next" class="btn" hidden>下一首</button><audio id="audio" controls preload="none"></audio><a class="btn" id="netease">打开网易云音乐客户端</a></div><p class="muted" id="state" role="status"></p></div></main><footer>日听　/　古典音乐听赏日历</footer>
 <dialog id="modal"><h2>收藏到…</h2><p class="muted" id="savename"></p><div id="choices"></div><label for="newfolder">或新建收藏夹</label><div class="new"><input id="newfolder" maxlength="48" placeholder="例如：雨天的钢琴"></div><p id="error" role="status" class="notice"></p><div class="actions"><button id="confirm" class="btn primary">保存</button><button id="cancel" class="btn">取消</button></div></dialog>
 <dialog id="account-dialog" aria-labelledby="account-heading"><h2 id="account-heading">日听账号</h2>
-<form id="account-login"><p>使用中国大陆手机号登录；首次验证通过后自动注册。</p>
-<label>手机号 <span>+86</span><input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="15" placeholder="11位手机号" required></label>
-<button type="button" class="btn" id="send-code">获取验证码</button>
-<label>短信验证码<input id="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
-<button class="btn primary" id="verify-code" type="submit">验证并登录</button>
-<p class="muted">手机号用于验证码登录，账号收藏夹保存在云端，仅该账号可访问。本机收藏夹不会自动上传。</p></form>
-<section id="account-member" hidden><p id="account-phone"></p><p>本机收藏夹仍会保留。导入时同名收藏夹合并、重复曲目去重。</p><button class="btn primary" id="account-import">导入本机收藏夹</button><button class="btn" id="account-refresh">重新同步</button><button class="btn" id="account-logout">退出登录</button></section>
+<form id="account-login"><p>使用邮箱和密码登录，在不同设备同步收藏夹。</p>
+<label>邮箱<input id="email" type="email" autocomplete="username" maxlength="254" required></label>
+<label>密码<input id="password" type="password" autocomplete="current-password" required></label>
+<button class="btn primary" id="email-login" type="submit">登录</button><button class="btn" id="email-register" type="button">注册账号</button><button class="btn" id="email-reset" type="button">忘记密码</button>
+<p class="muted">注册时请设置至少10位密码，并通过邮件确认邮箱。账号收藏夹仅该账号可访问，本机收藏夹不会自动上传。</p></form>
+<form id="account-recovery" hidden><label>新密码<input id="new-password" type="password" autocomplete="new-password" minlength="10" required></label><button class="btn primary" id="password-update" type="submit">保存新密码</button></form>
+<section id="account-member" hidden><p id="account-email"></p><p>本机收藏夹仍会保留。导入时同名收藏夹合并、重复曲目去重。</p><button class="btn primary" id="account-import">导入本机收藏夹</button><button class="btn" id="account-refresh">重新同步</button><button class="btn" id="account-logout">退出登录</button></section>
 <p id="account-status" role="status" aria-live="polite"></p><button class="btn" id="account-close" type="button">关闭</button></dialog>
 <script src="./native.js"></script><script src="./auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script><script src="./account.js"></script><script src="./app.js?v=20261114-accounts"></script></html>
 
