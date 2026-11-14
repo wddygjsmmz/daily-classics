@@ -92,7 +92,7 @@ async function startPlayback(){
 $('play').onclick=()=>{if(audio.paused){if(audio.error)setRecording(loadedTrack);startPlayback()}else{wantsPlayback=false;audio.pause()}};
 audio.onplay=()=>{wantsPlayback=true;fill('play','Ⅱ　暂停播放');fill('queue-toggle','暂停');fill('state','')};
 audio.onpause=()=>{fill('play','▶　播放作品');fill('queue-toggle','继续播放')};
-audio.onended=()=>{wantsPlayback=false;fill('play','▶　播放作品');if(queuePos+1<queue.length)playQueueItem(queuePos+1);else if(queue.length){fill('queue-status',queueName+' · 已播完');fill('queue-toggle','重新播放')}};
+audio.onended=()=>{wantsPlayback=false;fill('play','▶　播放作品');const next=order.next(queuePos,true);if(next>=0)playQueueItem(next);else if(queue.length){fill('queue-status',queueName+' · 已播完');fill('queue-toggle','重新播放')}};
 audio.onerror=()=>{if(!tryOriginal())fill('state','当前网络或浏览器未能播放录音，可重试或使用网易云音乐客户端。')};
 let activeCue=-1;$('current-cue').hidden=true;
 function formatTime(seconds){
@@ -121,8 +121,16 @@ function syncCue(){
 for(const event of ['timeupdate','seeking','seeked','loadedmetadata','emptied','ended'])audio.addEventListener(event,syncCue);
 $('current-cue').onclick=()=>{page(false)};
 let queue=[],queuePos=-1,queueName='',queueVersion=0;
+const order=new window.PlaybackOrder(),modeKey='daily-classics.play-mode.v1';
+try{order.setMode(localStorage.getItem(modeKey),-1)}catch{}
+$('queue-mode').value=order.mode;
+$('queue-mode').onchange=()=>{
+ order.setMode($('queue-mode').value,queuePos);
+ try{localStorage.setItem(modeKey,order.mode)}catch{}
+ if(queue.length)updateQueue();
+};
 function clearQueue(){
- queueVersion++;queue=[];queuePos=-1;queueName='';
+ queueVersion++;queue=[];queuePos=-1;queueName='';order.reset(0);
  fill('queue-status','');
  for(const id of ['queue-prev','queue-next','queue-toggle'])$(id).hidden=true;
 }
@@ -130,7 +138,7 @@ function updateQueue(){
  const meta=tracks.find(t=>t.original===queue[queuePos]);
  fill('queue-status',queueName+' · '+(queuePos+1)+' / '+queue.length+' · '+(meta?.title||''));
  for(const id of ['queue-prev','queue-next','queue-toggle'])$(id).hidden=false;
- $('queue-prev').disabled=queuePos<=0;$('queue-next').disabled=queuePos>=queue.length-1;
+ $('queue-prev').disabled=!order.canPrevious(queuePos);$('queue-next').disabled=!order.canNext(queuePos);
 }
 async function playQueueItem(pos){
  if(pos<0||pos>=queue.length)return;
@@ -144,12 +152,12 @@ async function playQueueItem(pos){
 $('play-folder').onclick=()=>{
  folders=recover();const folder=folders[selected];if(!folder)return;
  queue=folder.items.filter(id=>tracks.some(t=>t.original===id));queueName=folder.name;
- if(queue.length)playQueueItem(0);
+ order.reset(queue.length);if(queue.length)playQueueItem(order.start());
 };
-$('queue-prev').onclick=()=>playQueueItem(queuePos-1);
-$('queue-next').onclick=()=>playQueueItem(queuePos+1);
+$('queue-prev').onclick=()=>playQueueItem(order.previous(queuePos));
+$('queue-next').onclick=()=>playQueueItem(order.next(queuePos));
 $('queue-toggle').onclick=()=>{
- if(audio.ended)playQueueItem(0);
+ if(audio.ended){order.reset(queue.length);playQueueItem(order.start())}
  else if(audio.paused){if(audio.error)playQueueItem(queuePos);else startPlayback()}
  else{wantsPlayback=false;audio.pause()}
 };
