@@ -6,14 +6,15 @@ async function fetchJson(url){const res=await fetch(url,{cache:'no-cache'});if(!
 async function refreshCatalog(){
  const data=await fetchJson('./catalog.json');tracks.splice(0,tracks.length,...data);today=shanghaiDate();latest=tracks.filter(t=>t.date<=today).length-1;
 }
-async function selectLesson(n,fromFolder=false){
+async function selectLesson(n,fromFolder=false,fromQueue=false){
+ if(!fromQueue)clearQueue();
  const req=++requestId,meta=tracks[n];if(!meta)return;
  fill('loadstatus','正在载入导赏课…');
  try{
   const t=lessonCache.get(meta.date)||await fetchJson('./lessons/'+meta.date+'.json');
   if(req!==requestId)return;
   lessonCache.set(meta.date,t);loadedTrack=t;ix=n;preview=fromFolder;
-  render();page(false);fill('loadstatus',!preview&&ix===latest&&meta.date!==today?'今天的课程尚未发布，当前显示最近一期。':'');
+  render();if(!fromQueue)page(false);fill('loadstatus',!preview&&ix===latest&&meta.date!==today?'今天的课程尚未发布，当前显示最近一期。':'');return true;
  }catch{if(req===requestId)fill('loadstatus','课程加载失败，请刷新页面重试。')}
 }
 async function showToday(){try{await refreshCatalog();await selectLesson(latest)}catch{fill('loadstatus','课程目录加载失败，请刷新页面重试。')}}
@@ -35,20 +36,21 @@ function render(){
  fill('edition',preview?'收藏选听':date===today?'今日导赏课':'往期导赏课');
  fill('date',new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(new Date(date+'T00:00:00Z')));
  $('next').disabled=ix>=latest;$('prev').disabled=ix<=0;$('date').parentElement.hidden=preview;
- fill('album',t.original);fill('who',t.composer+'　/　'+t.latin);fill('title',t.title);fill('original',t.original);fill('summary',t.summary);fill('about',t.about);$('tags').replaceChildren(...[t.period,t.genre,Math.floor(t.duration/60)+' 分 '+String(t.duration%60).padStart(2,'0')+' 秒'].map(x=>make('span',x)));
+ fill('album',t.original);$('who').replaceChildren(document.createTextNode(t.composer),make('small',t.latin));fill('title',t.title);fill('original',t.original);fill('summary',t.summary);fill('about',t.about);$('tags').replaceChildren(...[t.period,t.genre,Math.floor(t.duration/60)+' 分 '+String(t.duration%60).padStart(2,'0')+' 秒'].map(x=>make('span',x)));
  $('cues').replaceChildren(...t.sections.map((a,i)=>{const row=make('div','','cue'),b=make('div','');b.append(make('h3',a.label),make('p',a.text));row.append(make('b','0'+(i+1)),b);return row}));
  const link=make('a','录音来源与授权 ↗');link.href=t.source;link.target='_blank';link.rel='noopener';$('credit').replaceChildren(document.createTextNode(t.credit+' · '+t.license+'　'),link);
- const fields=[['作曲家','author'],['创作背景','background'],['结构与乐章','structure'],['音乐表达','expression'],['听懂一点乐理','theory'],['流派与历史地位','history']];
- $('reading').replaceChildren(...fields.map(([label,key])=>{const section=make('section','','reading');section.append(make('h3',label),make('p',t[key],'copy'));return section}));
+ fill('article-title',t.articleTitle||t.title);
+ const paragraphs=Array.isArray(t.article)?t.article:[t.background,t.author,t.expression,t.history,t.theory].filter(Boolean);
+ $('reading').replaceChildren(...paragraphs.map(p=>make('p',p,'copy')));
  $('sources').replaceChildren(...t.sources.map(src=>{const a=make('a',src.label+' ↗');a.href=src.url;a.target='_blank';a.rel='noopener';return a}));
  window.configureNativeMusic($('netease'),t);
  setRecording(t);fill('play','▶　播放作品');fill('state','');saved();paint(ix)
 }
 function saved(){if(ix<0)return;fill('save',folders.some(f=>f.items.includes(tracks[ix].original))?'✓　已收藏':'＋　收藏作品')}
-function page(lib){$('library').hidden=!lib;$('daily').hidden=lib;$('home').setAttribute('aria-current',String(!lib));$('lib').setAttribute('aria-current',String(lib));if(lib){$('audio').pause();collection()}}
+function page(lib){$('library').hidden=!lib;$('daily').hidden=lib;$('home').setAttribute('aria-current',String(!lib));$('lib').setAttribute('aria-current',String(lib));if(lib){collection()}}
 $('home').onclick=showToday;$('lib').onclick=()=>{++requestId;fill('loadstatus','');page(true)};
 $('prev').onclick=()=>selectLesson(ix-1);$('next').onclick=()=>selectLesson(ix+1);
-async function checkDate(){if(shanghaiDate()!==today&&!preview&&!$('daily').hidden&&ix===latest)await showToday()}
+async function checkDate(){if(!queue.length&&shanghaiDate()!==today&&!preview&&!$('daily').hidden&&ix===latest)await showToday()}
 setInterval(checkDate,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkDate()});
 const audio=$('audio');
 let originalRecording='',usingBackup=false,wantsPlayback=false,playAttempt=0;
@@ -73,15 +75,50 @@ async function startPlayback(){
  }
 }
 $('play').onclick=()=>{if(audio.paused){if(audio.error)setRecording(loadedTrack);startPlayback()}else{wantsPlayback=false;audio.pause()}};
-audio.onplay=()=>{wantsPlayback=true;fill('play','Ⅱ　暂停播放');fill('state','')};
-audio.onpause=audio.onended=()=>fill('play','▶　播放作品');
+audio.onplay=()=>{wantsPlayback=true;fill('play','Ⅱ　暂停播放');fill('queue-toggle','暂停');fill('state','')};
+audio.onpause=()=>{fill('play','▶　播放作品');fill('queue-toggle','继续播放')};
+audio.onended=()=>{wantsPlayback=false;fill('play','▶　播放作品');if(queuePos+1<queue.length)playQueueItem(queuePos+1);else if(queue.length){fill('queue-status',queueName+' · 已播完');fill('queue-toggle','重新播放')}};
 audio.onerror=()=>{if(!tryOriginal())fill('state','当前网络或浏览器未能播放录音，可重试或使用网易云音乐客户端。')};
+let queue=[],queuePos=-1,queueName='',queueVersion=0;
+function clearQueue(){
+ queueVersion++;queue=[];queuePos=-1;queueName='';
+ fill('queue-status','');
+ for(const id of ['queue-prev','queue-next','queue-toggle'])$(id).hidden=true;
+}
+function updateQueue(){
+ const meta=tracks.find(t=>t.original===queue[queuePos]);
+ fill('queue-status',queueName+' · '+(queuePos+1)+' / '+queue.length+' · '+(meta?.title||''));
+ for(const id of ['queue-prev','queue-next','queue-toggle'])$(id).hidden=false;
+ $('queue-prev').disabled=queuePos<=0;$('queue-next').disabled=queuePos>=queue.length-1;
+}
+async function playQueueItem(pos){
+ if(pos<0||pos>=queue.length)return;
+ const version=++queueVersion;queuePos=pos;audio.pause();updateQueue();
+ const n=tracks.findIndex(t=>t.original===queue[pos]);
+ const ok=await selectLesson(n,true,true);
+ if(version!==queueVersion)return;
+ if(ok){updateQueue();await startPlayback()}
+ else fill('queue-status',queueName+' · 本首加载失败，可重试或切换下一首');
+}
+$('play-folder').onclick=()=>{
+ folders=recover();const folder=folders[selected];if(!folder)return;
+ queue=folder.items.filter(id=>tracks.some(t=>t.original===id));queueName=folder.name;
+ if(queue.length)playQueueItem(0);
+};
+$('queue-prev').onclick=()=>playQueueItem(queuePos-1);
+$('queue-next').onclick=()=>playQueueItem(queuePos+1);
+$('queue-toggle').onclick=()=>{
+ if(audio.ended)playQueueItem(0);
+ else if(audio.paused){if(audio.error)playQueueItem(queuePos);else startPlayback()}
+ else{wantsPlayback=false;audio.pause()}
+};
 $('save').onclick=()=>{folders=recover();fill('savename',tracks[ix].composer+' · '+tracks[ix].title);$('choices').replaceChildren(...folders.map(f=>{const l=make('label',''),c=make('input','');c.type='checkbox';c.checked=f.items.includes(tracks[ix].original);l.append(c,document.createTextNode(' '+f.name));return l}));$('newfolder').value='';fill('error','');$('modal').showModal()};
 $('cancel').onclick=()=>$('modal').close();
 $('confirm').onclick=()=>{const data=recover(),name=$('newfolder').value.trim(),id=tracks[ix].original;if(name&&data.some(f=>f.name===name)){fill('error','已有同名收藏夹，请勾选上方的收藏夹。');return}
  const inputs=[...$('choices').querySelectorAll('input')];for(const [i,f] of folders.entries()){const g=data.find(g=>g.name===f.name);if(g){g.items=g.items.filter(x=>x!==id);if(inputs[i].checked)g.items.push(id)}}if(name)data.push({name,items:[id]});try{persist(data);saved();$('modal').close()}catch{fill('error','浏览器无法保存，请检查存储设置。')}};
-function collection(){folders=recover();selected=Math.min(selected,folders.length-1);fill('notice','');$('folders').replaceChildren(...folders.map((f,i)=>{const b=make('button',f.name+' · '+f.items.length,'btn');b.setAttribute('aria-pressed',String(i===selected));b.onclick=()=>{selected=i;collection()};return b}));const f=folders[selected];$('list').replaceChildren();if(!f.items.length)$('list').append(make('p','这个收藏夹还是空的。在作品页点击「收藏作品」，就能把喜欢的音乐放进来。','muted'));
+function collection(){folders=recover();selected=Math.min(selected,folders.length-1);fill('notice','');$('folders').replaceChildren(...folders.map((f,i)=>{const b=make('button',f.name+' · '+f.items.length,'btn');b.setAttribute('aria-pressed',String(i===selected));b.onclick=()=>{selected=i;collection()};return b}));const f=folders[selected];$('play-folder').disabled=!f.items.some(id=>tracks.some(t=>t.original===id));$('list').replaceChildren();if(!f.items.length)$('list').append(make('p','这个收藏夹还是空的。在作品页点击「收藏作品」，就能把喜欢的音乐放进来。','muted'));
  for(const id of f.items){const n=tracks.findIndex(t=>t.original===id);if(n<0)continue;const t=tracks[n],row=make('div','','row'),b=make('button',t.title+'　›','link'),del=make('button','移出','btn');b.append(make('small','　'+t.composer));b.onclick=()=>{selectLesson(n,true);window.scrollTo(0,0)};del.onclick=()=>{try{const data=recover(),target=data.find(x=>x.name===f.name);if(target)target.items=target.items.filter(x=>x!==id);persist(data);collection()}catch{fill('notice','移出失败，请检查浏览器存储设置。')}};row.append(b,del);$('list').append(row)}
 }
 $('create').onsubmit=e=>{e.preventDefault();const name=$('foldername').value.trim(),data=recover();if(!name||data.some(f=>f.name===name)){fill('notice','请输入一个尚未使用的收藏夹名称。');return}try{persist([...data,{name,items:[]}]);selected=folders.length-1;$('foldername').value='';collection()}catch{fill('notice','浏览器无法保存，请检查存储设置。')}};
 window.addEventListener('storage',e=>{if(e.key===key&&!$('modal').open){folders=recover();saved();if(!$('library').hidden)collection()}});showToday();
+
