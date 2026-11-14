@@ -37,7 +37,21 @@ function render(){
  fill('date',new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(new Date(date+'T00:00:00Z')));
  $('next').disabled=ix>=latest;$('prev').disabled=ix<=0;$('date').parentElement.hidden=preview;
  fill('album',t.original);$('who').replaceChildren(document.createTextNode(t.composer),make('small',t.latin));fill('title',t.title);fill('original',t.original);fill('summary',t.summary);fill('about',t.about);$('tags').replaceChildren(...[t.period,t.genre,Math.floor(t.duration/60)+' 分 '+String(t.duration%60).padStart(2,'0')+' 秒'].map(x=>make('span',x)));
- $('cues').replaceChildren(...t.sections.map((a,i)=>{const row=make('div','','cue'),b=make('div','');b.append(make('h3',a.label),make('p',a.text));row.append(make('b','0'+(i+1)),b);return row}));
+ $('cues').replaceChildren(...t.sections.map((section,i)=>{
+  const row=make('div','','cue'),body=make('div','','cue-body');
+  row.id='cue-'+i;
+  body.append(make('h3',section.label),make('p',section.text));
+  const marker=make('div','','cue-marker');marker.append(make('b',String(i+1).padStart(2,'0')));
+  if(hasCueTimes(t)){
+   const jump=make('button',formatTime(section.start),'cue-time');
+   jump.type='button';jump.setAttribute('aria-label','从'+formatTime(section.start)+'播放'+section.label);
+   jump.onclick=()=>{audio.currentTime=section.start;syncCue();startPlayback()};
+   marker.append(jump);
+  }
+  row.append(marker,body);return row;
+ }));
+ fill('cue-note',hasCueTimes(t)?'高亮随本站播放器同步，段落边界为近似位置。点击时间可从该段开始听；网易云客户端不支持同步。':'这首作品的段落时间待校准。');
+ activeCue=-1;$('current-cue').hidden=true;
  const link=make('a','录音来源与授权 ↗');link.href=t.source;link.target='_blank';link.rel='noopener';$('credit').replaceChildren(document.createTextNode(t.credit+' · '+t.license+'　'),link);
  fill('article-title',t.articleTitle||t.title);
  const paragraphs=Array.isArray(t.article)?t.article:[t.background,t.author,t.expression,t.history,t.theory].filter(Boolean);
@@ -58,6 +72,7 @@ function setRecording(track){
  ++playAttempt;wantsPlayback=false;usingBackup=false;audio.pause();
  originalRecording=track.audio;
  audio.src='./audio/'+encodeURIComponent(track.date)+'.mp3';
+ syncCue();
 }
 function tryOriginal(){
  if(usingBackup||!originalRecording)return false;
@@ -79,6 +94,32 @@ audio.onplay=()=>{wantsPlayback=true;fill('play','Ⅱ　暂停播放');fill('que
 audio.onpause=()=>{fill('play','▶　播放作品');fill('queue-toggle','继续播放')};
 audio.onended=()=>{wantsPlayback=false;fill('play','▶　播放作品');if(queuePos+1<queue.length)playQueueItem(queuePos+1);else if(queue.length){fill('queue-status',queueName+' · 已播完');fill('queue-toggle','重新播放')}};
 audio.onerror=()=>{if(!tryOriginal())fill('state','当前网络或浏览器未能播放录音，可重试或使用网易云音乐客户端。')};
+let activeCue=-1;$('current-cue').hidden=true;
+function formatTime(seconds){
+ return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0');
+}
+function hasCueTimes(track){
+ return !!track&&track.timingAudio===track.audio&&track.sections.length>0&&
+  track.sections.every((s,i)=>Number.isFinite(s.start)&&s.start>=0&&
+   (i===0?s.start===0:s.start>track.sections[i-1].start));
+}
+function syncCue(){
+ const ready=hasCueTimes(loadedTrack)&&audio.readyState>0&&!audio.ended;
+ let next=-1;
+ if(ready)for(let i=0;i<loadedTrack.sections.length;i++){
+  if(audio.currentTime>=loadedTrack.sections[i].start)next=i;else break;
+ }
+ if(next===activeCue)return;
+ activeCue=next;
+ [...$('cues').children].forEach((row,i)=>{
+  const current=i===next;row.classList.toggle('cue-active',current);
+  if(current)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');
+ });
+ const link=$('current-cue');link.hidden=next<0;
+ if(next>=0){link.textContent='正在听 · '+loadedTrack.sections[next].label;link.href='#cue-'+next}
+}
+for(const event of ['timeupdate','seeking','seeked','loadedmetadata','emptied','ended'])audio.addEventListener(event,syncCue);
+$('current-cue').onclick=()=>{page(false)};
 let queue=[],queuePos=-1,queueName='',queueVersion=0;
 function clearQueue(){
  queueVersion++;queue=[];queuePos=-1;queueName='';
@@ -121,4 +162,5 @@ function collection(){folders=recover();selected=Math.min(selected,folders.lengt
 }
 $('create').onsubmit=e=>{e.preventDefault();const name=$('foldername').value.trim(),data=recover();if(!name||data.some(f=>f.name===name)){fill('notice','请输入一个尚未使用的收藏夹名称。');return}try{persist([...data,{name,items:[]}]);selected=folders.length-1;$('foldername').value='';collection()}catch{fill('notice','浏览器无法保存，请检查存储设置。')}};
 window.addEventListener('storage',e=>{if(e.key===key&&!$('modal').open){folders=recover();saved();if(!$('library').hidden)collection()}});showToday();
+
 
